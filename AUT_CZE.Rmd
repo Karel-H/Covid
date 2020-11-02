@@ -1,0 +1,219 @@
+---
+title: "Covid19_II"
+author: "Karel Hanak"
+date: "10 7 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(installr)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(R0)
+library(ggpubr)
+library(ggpmisc)
+library(COVID19)
+```
+```{r, import data from COVID19 Datahub}
+
+x <- covid19(c("Austria","Czech Republic"))
+
+```
+```{r, active cases}
+x <- x %>% mutate(active_cases = confirmed - recovered - deaths)
+x <- x %>% mutate(roll_avg = zoo::rollmean(active_cases, k = 7, 
+                                           fill = NA, align = "right"))
+
+x <- x %>% mutate(growth_active_cases = active_cases - lag(active_cases, n=1L))
+x <- x %>% mutate(roll_growth_active_cases = zoo::rollmean(growth_active_cases, k = 7, 
+                                                    fill = NA, align = "right"))
+
+x <- x %>% mutate(roll_new_cases = zoo::rollmean((confirmed - lag(confirmed, n=1L)),
+                  k = 7, fill = NA, align = "right"))
+
+
+
+x <- x %>% dplyr::select(active_cases, roll_avg, roll_growth_active_cases, growth_active_cases, roll_new_cases, everything())
+
+
+AUT <- filter(x, id == "AUT")
+CZE <- filter(x, id =="CZE")
+
+
+ggplot(data=x)+
+  geom_point(aes(x = as.character(date),y=active_cases, colour= id))+
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, size=5))+
+  geom_point(aes(x=as.character(date), y = roll_avg, alpha=0.05))+
+  ylab("Active cases")+
+  xlab("Date")+
+  labs(title = "Active Cases in A and CZ")
+
+ggplot(data=x)+
+  geom_point(aes(x=as.character(date), y = roll_avg, colour = id))+
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, size=5))
+
+
+```
+```{r}
+ggplot(data = x)+
+  geom_point(aes(x = as.character(date), y = roll_new_cases, colour = id))+
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, size=5))
+```
+
+
+```{r, lin Reg}
+#facetted plots last 7 days regression, without last 2 days bc of not yet confirmed cases
+ggplot( data = x)+
+  geom_point(aes(x = date, y = active_cases))+
+  facet_wrap(~ id)+
+  geom_smooth(data = tail(tail(filter(x, id == "CZE"), n = 9L), -2L), aes (x= date, y = active_cases), method="lm", se = T, colour = "red")+
+  stat_poly_eq(data = tail(tail(filter(x,id == "CZE"), n = 9L), -2L),formula= x~ y, aes(x= date,y=active_cases, label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),parse = TRUE, colour="red", label.y = "top")+
+  geom_smooth(data = tail(tail(filter(x, id == "AUT"), n = 9L), -2L), aes ( x = date, y = active_cases), method = "lm", se = T, colour = "steelblue")+
+  stat_poly_eq(data = tail(tail(filter(x, id == "AUT"), n = 9L),-2L),formula= x~ y, aes(x= date,y=active_cases, label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),parse = TRUE, colour = "steelblue", label.y = "top")
+
+#same as above, but only since 1st of June
+ggplot(data = x)+
+  geom_point(aes(x = date, y = active_cases))+
+  facet_wrap(~ id)+
+  geom_smooth(data = tail(tail(filter(x, id == "CZE"), n = 9L), -2L), 
+              aes (x= date, y = active_cases), 
+              method="lm", se = T, colour = "red")+
+  stat_poly_eq(data = tail(tail(filter(x, id =="CZE"), n = 9L), -2L),
+               formula= x~ y, 
+               aes(x= date,y=active_cases, 
+                   label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),
+               parse = TRUE, colour="red")+
+  geom_smooth(data = tail(tail(filter(x, id == "AUT"), n = 9L), -2L), 
+              aes ( x = date, y = active_cases), 
+              method = "lm", se = T, colour = "steelblue")+
+  stat_poly_eq(data = tail(tail(filter(x, id == "AUT"), n = 9L),-2L),formula= x~ y,
+               aes(x= date,y=active_cases, 
+                   label = paste(..eq.label.., ..rr.label.., sep = "~~~~")),
+               parse = TRUE, colour = "steelblue")+
+  xlim(as.Date("2020-07-01"), NA)
+
+Seven_days <- tail(tail(filter(x, id == "AUT"), n = 9L), -2L)
+  
+```
+
+```{r, stat data lin reg AUT}
+
+reg_data_AUT <- head(tail(filter(x, id == "AUT"), n = 9L), 7L) #WRITE FUNCTION OIDA!!!!!!!!!!!!!!
+
+
+
+
+
+reg_output_AUT <- lm(formula = as.numeric(reg_data_AUT$date) ~  reg_data_AUT$active_cases)
+summary(reg_output_AUT)
+
+```
+
+```{r, stat data lin reg CZE}
+reg_data_CZE <- head(tail(filter(x, id == "CZE"), n = 9L), 7L)
+reg_output_CZE <- lm(formula = as.numeric(reg_data_CZE$date) ~  reg_data_CZE$active_cases)
+
+summary(reg_output_CZE)
+
+
+```
+
+
+
+```{r, together plots}
+#together
+ggplot( data = x)+
+  geom_point(aes(x = date, y = active_cases, colour = id))+
+  ylim(0,10000)+
+  geom_smooth(data =tail(x, n = 7L), 
+              aes (x= date, y = active_cases), 
+              method="lm", se = T, colour = "blue")+
+  stat_poly_eq(data = tail(x, n = 7L),formula= x~ y, 
+               aes(x= date,y=active_cases, 
+                   label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),
+               parse = TRUE, colour="blue", label.y = 10000, label.x = 0.1)+
+  geom_smooth(data = tail(filter(x, id == "AUT"), n = 7L), 
+              aes ( x = date, y = active_cases), 
+              method = "lm", se = T, colour = "red")+
+  stat_poly_eq(data = tail(filter(x, id == "AUT"), n = 7L),formula= x~ y, 
+               aes(x= date,y=active_cases, label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),
+               parse = TRUE, colour = "red", label.y = 10000, label.x = 1)
+
+ggplot( data = x)+
+  geom_point(aes(x = date, y = active_cases, colour = id))+
+  geom_smooth(data =tail(x, n = 7L), 
+              aes (x= date, y = active_cases))+
+  geom_smooth(data = tail(filter(x, id == "AUT"), n = 7L), 
+              aes ( x = date, y = active_cases), 
+              method = "lm", se = T, colour = "red")+
+  stat_poly_eq(data = tail(filter(x, id == "AUT"), n = 7L),formula= x~ y, 
+               aes(x= date,y=active_cases, label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),
+               parse = TRUE, colour = "red", label.y = 8000, label.x = 1.9)+
+    geom_smooth(data = tail(filter(x, id == "CZE"), n = 7L), 
+                aes ( x = date, y = active_cases), 
+                method = "lm", se = T, colour = "blue")+
+  stat_poly_eq(data = tail(filter(x, id == "CZE"), n = 7L),formula= x~ y, 
+               aes(x= date,y=active_cases, label = paste(..eq.label.., ..rr.label.., sep = "~~~~~~")),
+               parse = TRUE, colour = "blue", label.y = 6000, label.x = 0.1)
+```
+
+
+
+
+
+```{r, Maßnahmen}
+
+ggplot(data = AUT)+
+  ylim(-500,10000)+
+  geom_point(aes(x = date, y = active_cases))+
+  geom_vline(aes(xintercept=as.Date("2020-03-10")),
+color="red", linetype = "dashed", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-03-10"), 
+                label="\nReisebeschränkungen", y=-40), colour="red", size=3 )+
+  geom_vline(aes(xintercept=as.Date("2020-03-20")),
+color="blue", linetype = "dotdash", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-03-20"), 
+                label="\nAusgangsbeschränkungen", y=200), colour="blue", size=3)+
+geom_vline(aes(xintercept=as.Date("2020-04-01")),
+color="darkgreen", linetype = "dashed", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-04-01"), 
+                label="\nMaskenpflicht", y=-500), colour="darkgreen", size=3 )+
+  geom_vline(aes(xintercept=as.Date("2020-04-15")),
+color="darkgrey", linetype = "dotdash", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-04-15"), 
+                label="\nLockerungen", y=-110), colour="darkgrey", size=3)+
+  geom_vline(aes(xintercept=as.Date("2020-06-15")),
+color="steelblue", linetype = "dotted", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-06-15"), 
+                label="\nMaskenpflicht\nEnde", y=-100), colour="steelblue", size=3 )+
+  ggtitle("Active Cases AUT")+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+  
+ggplot(data = CZE)+
+  ylim(-500,10000)+
+  geom_point(aes(x = date, y = active_cases))+
+  geom_vline(aes(xintercept=as.Date("2020-03-12")),
+color="red", linetype = "dashed", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-03-12"), label="\nNotstand", y=-40), colour="red", size=3 )+
+  geom_vline(aes(xintercept=as.Date("2020-03-16")),
+color="blue", linetype = "dotdash", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-03-16"), label="\nGrenzschließung", y=200), colour="blue", size=3)+
+geom_vline(aes(xintercept=as.Date("2020-03-19")),
+color="darkgreen", linetype = "dashed", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-03-19"), label="\nMaskenpflicht", y=-500), colour="darkgreen", size=3 )+
+  geom_vline(aes(xintercept=as.Date("2020-04-15")),
+color="darkgrey", linetype = "dotdash", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-04-15"), label="\nLockerungen", y=-110), colour="darkgrey", size=3)+
+  geom_vline(aes(xintercept=as.Date("2020-06-30")),
+color="steelblue", linetype = "dotted", alpha = 0.8)+
+  geom_text(aes(x=as.Date("2020-06-30"), label="\nMaskenpflicht\nEnde", y=-100), colour="steelblue", size=3 )+
+  ggtitle("Active Cases CZE")+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+
+```
+
